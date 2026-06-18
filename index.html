@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LSPD — Dispatch</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0a0c10; --surface: #111520; --surface2: #161b28;
+    --border: #1e2535; --accent: #2563eb; --accent2: #3b82f6;
+    --danger: #ef4444; --success: #22c55e; --text: #e2e8f0; --muted: #64748b;
+  }
+  body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; display:flex; flex-direction:column; }
+  header { background:var(--surface); border-bottom:2px solid var(--accent); padding:0 24px; height:56px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+  .logo { font-family:'Rajdhani',sans-serif; font-size:22px; font-weight:700; letter-spacing:3px; display:flex; align-items:center; gap:10px; }
+  .logo span { color:var(--accent2); }
+  .sync-status { font-size:11px; padding:3px 10px; border-radius:20px; font-weight:600; }
+  .sync-ok { background:#14532d; color:#86efac; }
+  .sync-err { background:#450a0a; color:#fca5a5; }
+  .sync-pending { background:#1e1b4b; color:#a5b4fc; }
+  .header-actions { display:flex; gap:8px; align-items:center; }
+  .btn { font-family:'Inter',sans-serif; font-size:12px; font-weight:500; padding:7px 14px; border-radius:6px; border:none; cursor:pointer; transition:all 0.15s; letter-spacing:0.5px; }
+  .btn-primary { background:var(--accent); color:white; } .btn-primary:hover { background:var(--accent2); }
+  .btn-danger { background:transparent; color:var(--danger); border:1px solid var(--danger); } .btn-danger:hover { background:var(--danger); color:white; }
+  .btn-ghost { background:transparent; color:var(--muted); border:1px solid var(--border); } .btn-ghost:hover { color:var(--text); border-color:var(--muted); }
+  .btn-success { background:var(--success); color:#000; } .btn-success:hover { opacity:0.85; }
+  .layout { display:grid; grid-template-columns:300px 1fr; flex:1; }
+  .sidebar { background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; height:calc(100vh - 56px); position:sticky; top:56px; overflow:hidden; }
+  .sidebar-header { padding:16px; border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:10px; }
+  .sidebar-title { font-family:'Rajdhani',sans-serif; font-size:13px; font-weight:600; letter-spacing:2px; color:var(--muted); text-transform:uppercase; }
+  .search-box { background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:7px 12px; color:var(--text); font-size:13px; font-family:'Inter',sans-serif; width:100%; outline:none; transition:border-color 0.15s; }
+  .search-box:focus { border-color:var(--accent); } .search-box::placeholder { color:var(--muted); }
+  .agents-list { overflow-y:auto; flex:1; padding:8px; }
+  .agents-list::-webkit-scrollbar { width:4px; } .agents-list::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+  .grade-group { margin-bottom:4px; }
+  .grade-label { font-size:10px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; padding:6px 8px 3px; color:var(--muted); }
+  .agent-card { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:6px; cursor:grab; transition:all 0.15s; border:1px solid transparent; margin-bottom:2px; }
+  .agent-card:hover { background:var(--surface2); border-color:var(--border); }
+  .agent-card.dragging { opacity:0.4; }
+  .agent-card.assigned { opacity:0.35; pointer-events:none; cursor:default; }
+  .agent-pip { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .agent-matricule { font-family:'Rajdhani',sans-serif; font-size:14px; font-weight:700; color:var(--muted); min-width:32px; }
+  .agent-name { font-size:13px; font-weight:500; flex:1; }
+  .counter { font-size:11px; color:var(--muted); background:var(--bg); padding:2px 8px; border-radius:20px; }
+  .main { padding:20px; overflow-y:auto; }
+  .main-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+  .main-title { font-family:'Rajdhani',sans-serif; font-size:20px; font-weight:700; letter-spacing:2px; text-transform:uppercase; }
+  .units-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:12px; }
+  .unit-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; overflow:hidden; transition:border-color 0.15s; }
+  .unit-card.drag-over { border-color:var(--accent); background:#111b30; }
+  .unit-header { padding:10px 14px; display:flex; align-items:center; justify-content:space-between; background:var(--surface2); border-bottom:1px solid var(--border); }
+  .unit-name { font-family:'Rajdhani',sans-serif; font-size:15px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; }
+  .unit-type-badge { font-size:10px; font-weight:600; letter-spacing:1px; padding:2px 8px; border-radius:20px; background:var(--accent); color:white; }
+  .unit-desc { font-size:10px; color:var(--muted); padding:4px 14px 6px; border-bottom:1px solid var(--border); }
+  .unit-slots { padding:10px; display:flex; flex-direction:column; gap:6px; min-height:60px; }
+  .unit-slot { background:var(--bg); border:1px dashed var(--border); border-radius:6px; padding:8px 10px; min-height:38px; display:flex; align-items:center; font-size:12px; color:var(--muted); transition:all 0.15s; }
+  .unit-slot.filled { border-style:solid; border-color:var(--border); color:var(--text); background:var(--surface2); }
+  .unit-slot-content { display:flex; align-items:center; gap:8px; flex:1; }
+  .slot-remove { background:transparent; border:none; cursor:pointer; color:var(--muted); font-size:14px; padding:0 2px; line-height:1; transition:color 0.1s; flex-shrink:0; }
+  .slot-remove:hover { color:var(--danger); }
+  .unit-footer { padding:8px 10px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; }
+  .del-unit-btn { font-size:11px; color:var(--muted); background:transparent; border:none; cursor:pointer; padding:3px 6px; border-radius:4px; transition:all 0.1s; }
+  .del-unit-btn:hover { color:var(--danger); background:#1f1010; }
+  .empty-units { grid-column:1/-1; text-align:center; padding:60px 20px; color:var(--muted); font-size:14px; }
+  .presence-section { margin-top:28px; }
+  .presence-title { font-family:'Rajdhani',sans-serif; font-size:16px; font-weight:700; letter-spacing:2px; text-transform:uppercase; margin-bottom:12px; color:var(--muted); }
+  .presence-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }
+  .presence-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; overflow:hidden; transition:border-color 0.15s; }
+  .presence-card.drag-over { border-color:var(--accent); background:#111b30; }
+  .presence-card-header { padding:10px 14px; background:var(--surface2); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; }
+  .presence-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .presence-card-title { font-family:'Rajdhani',sans-serif; font-size:14px; font-weight:700; letter-spacing:1px; }
+  .presence-count { font-size:10px; color:var(--muted); background:var(--bg); padding:1px 7px; border-radius:20px; margin-left:auto; }
+  .presence-slots { padding:10px; display:flex; flex-direction:column; gap:5px; min-height:50px; }
+  .presence-slot { background:var(--surface2); border-radius:6px; padding:7px 10px; display:flex; align-items:center; gap:8px; font-size:12px; }
+  .presence-drop-zone { border:1px dashed var(--border); border-radius:6px; padding:8px 10px; font-size:11px; color:var(--muted); text-align:center; }
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:200; align-items:center; justify-content:center; }
+  .modal-overlay.open { display:flex; }
+  .modal { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:24px; width:380px; max-width:90vw; }
+  .modal h3 { font-family:'Rajdhani',sans-serif; font-size:18px; font-weight:700; letter-spacing:1.5px; margin-bottom:16px; text-transform:uppercase; }
+  .form-group { margin-bottom:12px; }
+  .form-group label { display:block; font-size:11px; font-weight:600; color:var(--muted); letter-spacing:1px; text-transform:uppercase; margin-bottom:5px; }
+  .form-group input, .form-group select { width:100%; background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:8px 12px; color:var(--text); font-size:13px; font-family:'Inter',sans-serif; outline:none; transition:border-color 0.15s; }
+  .form-group input:focus, .form-group select:focus { border-color:var(--accent); }
+  .form-group select option { background:var(--surface); }
+  .modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:16px; }
+  .modal-large { width:680px; max-height:80vh; display:flex; flex-direction:column; }
+  .modal-large .modal-body { overflow-y:auto; flex:1; margin-top:12px; }
+  .modal-large .modal-body::-webkit-scrollbar { width:4px; }
+  .modal-large .modal-body::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+  .manage-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .manage-table th { text-align:left; padding:8px 12px; font-size:10px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--border); }
+  .manage-table td { padding:9px 12px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  .manage-table tr:last-child td { border-bottom:none; }
+  .manage-table tr:hover td { background:var(--surface2); }
+  .grade-pill { display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:600; color:white; }
+  .confirm-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:300; align-items:center; justify-content:center; }
+  .confirm-overlay.open { display:flex; }
+  .confirm-box { background:var(--surface); border:1px solid var(--danger); border-radius:12px; padding:24px; width:340px; text-align:center; }
+  .confirm-box p { font-size:14px; margin-bottom:6px; }
+  .confirm-box small { color:var(--muted); font-size:12px; }
+  .confirm-actions { display:flex; gap:10px; justify-content:center; margin-top:18px; }
+  .login-overlay { position:fixed; inset:0; background:var(--bg); z-index:1000; display:flex; align-items:center; justify-content:center; }
+  .login-box { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:40px; width:340px; text-align:center; }
+  .login-logo { font-family:'Rajdhani',sans-serif; font-size:28px; font-weight:700; letter-spacing:4px; margin-bottom:8px; }
+  .login-logo span { color:var(--accent2); }
+  .login-sub { font-size:12px; color:var(--muted); margin-bottom:28px; letter-spacing:1px; text-transform:uppercase; }
+  .login-input { width:100%; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px 14px; color:var(--text); font-size:14px; font-family:'Inter',sans-serif; outline:none; text-align:center; letter-spacing:3px; margin-bottom:12px; transition:border-color 0.15s; }
+  .login-input:focus { border-color:var(--accent); }
+  .login-btn { width:100%; background:var(--accent); color:white; border:none; border-radius:8px; padding:10px; font-size:14px; font-weight:600; cursor:pointer; font-family:'Inter',sans-serif; transition:background 0.15s; }
+  .login-btn:hover { background:var(--accent2); }
+  .login-error { color:var(--danger); font-size:12px; margin-top:8px; min-height:16px; }
+
+  .toast { position:fixed; bottom:20px; right:20px; background:var(--success); color:#000; padding:10px 18px; border-radius:8px; font-size:13px; font-weight:600; z-index:400; transform:translateY(60px); opacity:0; transition:all 0.3s; }
+  .toast.show { transform:translateY(0); opacity:1; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🚔 <span>LSPD</span> ROLL CALL</div>
+  <div class="header-actions">
+    <span class="sync-status sync-pending" id="syncStatus">Connexion...</span>
+    <button class="btn btn-ghost" onclick="openModal('manageAgentsModal')">Gérer agents</button>
+    <button class="btn btn-ghost" onclick="openModal('addAgentModal')">+ Agent</button>
+    <button class="btn btn-primary" onclick="openModal('addUnitModal')">+ Unité</button>
+    <button class="btn btn-danger" onclick="confirmReset()">Reset</button>
+  </div>
+</header>
+
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-box">
+    <div class="login-logo">🚔 <span>LSPD</span></div>
+    <div class="login-sub">Dispatch — Accès restreint</div>
+    <input class="login-input" type="password" id="loginInput" placeholder="Mot de passe" onkeydown="if(event.key==='Enter') checkLogin()">
+    <button class="login-btn" onclick="checkLogin()">Accéder</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-title">Agents disponibles <span class="counter" id="availableCount">0</span></div>
+      <input class="search-box" type="text" placeholder="Rechercher un agent..." id="searchInput" oninput="renderAgents()">
+    </div>
+    <div class="agents-list" id="agentsList"></div>
+  </div>
+  <div class="main">
+    <div class="main-header">
+      <div class="main-title">Unités actives</div>
+      <span class="counter" id="unitsCount">0 unité(s)</span>
+    </div>
+    <div class="units-grid" id="unitsGrid"></div>
+    <div class="presence-section">
+      <div class="presence-title">Présences</div>
+      <div class="presence-grid" id="presenceGrid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL GESTION AGENTS -->
+<div class="modal-overlay" id="manageAgentsModal">
+  <div class="modal modal-large">
+    <h3>Gestion des agents</h3>
+    <div class="modal-body"><table class="manage-table" id="manageTable"></table></div>
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn btn-ghost" onclick="closeModal('manageAgentsModal')">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL AJOUT/EDIT AGENT -->
+<div class="modal-overlay" id="addAgentModal">
+  <div class="modal">
+    <h3 id="agentModalTitle">Ajouter un agent</h3>
+    <div class="form-group"><label>Matricule</label><input type="text" id="agentMatricule" placeholder="ex: 42"></div>
+    <div class="form-group"><label>Nom complet</label><input type="text" id="agentName" placeholder="ex: John Doe"></div>
+    <div class="form-group">
+      <label>Grade</label>
+      <select id="agentGrade">
+        <option value="Rookie">Rookie</option>
+        <option value="Officier I">Officier I</option>
+        <option value="Officier II">Officier II</option>
+        <option value="Officier III">Officier III</option>
+        <option value="SLO">SLO</option>
+        <option value="Sergent">Sergent</option>
+        <option value="Sergent Chef">Sergent Chef</option>
+        <option value="Lieutenant">Lieutenant</option>
+        <option value="Capitaine">Capitaine</option>
+        <option value="Commandant">Commandant</option>
+        <option value="Assistant Chief of Police">Assistant Chief of Police</option>
+        <option value="Chief of Police">Chief of Police</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('addAgentModal')">Annuler</button>
+      <button class="btn btn-success" id="agentModalBtn" onclick="saveAgent()">Ajouter</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL AJOUT UNITE -->
+<div class="modal-overlay" id="addUnitModal">
+  <div class="modal">
+    <h3>Créer une unité</h3>
+    <div class="form-group">
+      <label>Type d'unité</label>
+      <select id="unitType" onchange="onUnitTypeChange()">
+        <option value="LINCOLN|1|1 agent véhiculé">LINCOLN — 1 agent</option>
+        <option value="ADAM|2|2 agents véhiculés">ADAM — 2 agents</option>
+        <option value="TANGO|3|3 agents véhiculés">TANGO — 3 agents</option>
+        <option value="X-RAY|4|4 agents véhiculés">X-RAY — 4 agents</option>
+        <option value="K-9|2|Patrouille avec officier canin">K-9 — Canin</option>
+        <option value="QUEEN|2|Patrouille VIP">QUEEN — VIP</option>
+        <option value="SIERRA|2|Highway Patrol">SIERRA — Highway</option>
+        <option value="HENRY|2|ASD">HENRY — ASD</option>
+        <option value="BRAVO|2|Unité bateau">BRAVO — Bateau</option>
+        <option value="MARY|1|Motorcycle Unit">MARY — Moto</option>
+        <option value="VICTOR|1|Unité vélo">VICTOR — Vélo</option>
+        <option value="OSCAR|2|Unités banalisées">OSCAR — Banalisé</option>
+        <option value="ECHO|2|Unités S.R.T">ECHO — SRT</option>
+        <option value="CUSTOM">✏️ Personnalisée</option>
+      </select>
+    </div>
+    <div class="form-group" id="customNameGroup" style="display:none">
+      <label>Nom de l'unité</label>
+      <input type="text" id="customUnitName" placeholder="ex: Briefing, Formation...">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('addUnitModal')">Annuler</button>
+      <button class="btn btn-primary" onclick="addUnit()">Créer</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRM -->
+<div class="confirm-overlay" id="confirmModal">
+  <div class="confirm-box">
+    <p id="confirmText"></p>
+    <small id="confirmSub"></small>
+    <div class="confirm-actions">
+      <button class="btn btn-ghost" onclick="closeConfirm()">Annuler</button>
+      <button class="btn btn-danger" onclick="confirmAction()">Supprimer</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Firebase -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, setDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAJeIuV2PwzoVGZnv2CraqfhHEPQ89ebRg",
+  authDomain: "lspd-dispatch-591a4.firebaseapp.com",
+  projectId: "lspd-dispatch-591a4",
+  storageBucket: "lspd-dispatch-591a4.firebasestorage.app",
+  messagingSenderId: "752594964106",
+  appId: "1:752594964106:web:0e5969d82a9804cf2a2773"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+const GRADE_COLORS = {
+  "Rookie": "#3b5998", "Officier I": "#166534", "Officier II": "#854d0e",
+  "Officier III": "#9f1239", "SLO": "#6d28d9", "Sergent": "#0e7490",
+  "Sergent Chef": "#0a5470", "Lieutenant": "#1e40af", "Capitaine": "#1d4ed8",
+  "Commandant": "#7c3aed", "Assistant Chief of Police": "#b91c1c", "Chief of Police": "#7f1d1d",
+};
+const GRADE_ORDER = Object.keys(GRADE_COLORS);
+
+const PRESENCE_CATEGORIES = [
+  { id:'p1', label:'< 30 min retard', color:'#22c55e' },
+  { id:'p2', label:'> 30 min retard', color:'#f97316' },
+  { id:'p3', label:'Arrivée 22h', color:'#3b82f6' },
+  { id:'p4', label:'Arrivée 23h', color:'#8b5cf6' },
+];
+
+const DEFAULT_AGENTS = [
+  {id:"a1",matricule:"04",name:"William Price",grade:"Rookie"},
+  {id:"a2",matricule:"38",name:"Juan Velasquez",grade:"Rookie"},
+  {id:"a3",matricule:"77",name:"Santiago Guzman",grade:"Rookie"},
+  {id:"a4",matricule:"10",name:"Willy Carter",grade:"Rookie"},
+  {id:"a5",matricule:"95",name:"Joe Winslow",grade:"Rookie"},
+  {id:"a6",matricule:"33",name:"Tyrone Davis",grade:"Rookie"},
+  {id:"a7",matricule:"96",name:"Caleb Price",grade:"Rookie"},
+  {id:"a8",matricule:"13",name:"Alessia Ricci",grade:"Officier I"},
+  {id:"a9",matricule:"15",name:"Octavia Ray",grade:"Officier I"},
+  {id:"a10",matricule:"18",name:"Noa Stevens",grade:"Officier I"},
+  {id:"a11",matricule:"52",name:"Taylor Parker",grade:"Officier I"},
+  {id:"a12",matricule:"86",name:"Takumo Sato",grade:"Officier I"},
+  {id:"a13",matricule:"47",name:"Kendrick Johnson",grade:"Officier I"},
+  {id:"a14",matricule:"28",name:"John Lou Kas",grade:"Officier I"},
+  {id:"a15",matricule:"72",name:"Mike Morrigan",grade:"Officier II"},
+  {id:"a16",matricule:"67",name:"Nayla Damiano",grade:"Officier II"},
+  {id:"a17",matricule:"23",name:"Marcus Reaper",grade:"Officier II"},
+  {id:"a18",matricule:"22",name:"Alexey Romanov",grade:"Officier II"},
+  {id:"a19",matricule:"51",name:"Jason Reaper",grade:"Officier II"},
+  {id:"a20",matricule:"14",name:"Emilio Del Angel",grade:"Officier II"},
+  {id:"a21",matricule:"12",name:"Diego Del Angel",grade:"Officier II"},
+  {id:"a22",matricule:"19",name:"Blake Sinclair",grade:"Officier II"},
+  {id:"a23",matricule:"07",name:"Gisou Tanaka",grade:"Officier III"},
+  {id:"a24",matricule:"01",name:"Martha Price",grade:"Officier III"},
+  {id:"a25",matricule:"25",name:"Arthur Kervan",grade:"Officier III"},
+  {id:"a26",matricule:"37",name:"Ethan Redwood",grade:"Officier III"},
+  {id:"a27",matricule:"71",name:"Owen Parker",grade:"Officier III"},
+  {id:"a28",matricule:"42",name:"Lazlo Nebag",grade:"SLO"},
+  {id:"a29",matricule:"60",name:"F.D. Powell",grade:"SLO"},
+  {id:"a30",matricule:"45",name:"M. Williams",grade:"SLO"},
+  {id:"a31",matricule:"09",name:"Michael Jones",grade:"SLO"},
+  {id:"a32",matricule:"39",name:"Gabriel Arlownn",grade:"SLO"},
+  {id:"a33",matricule:"68",name:"Takahashi Takeshi",grade:"Sergent"},
+  {id:"a34",matricule:"27",name:"Michael Smith",grade:"Sergent"},
+  {id:"a35",matricule:"94",name:"Lena Spencer",grade:"Sergent"},
+  {id:"a36",matricule:"16",name:"Adrian Morales",grade:"Lieutenant"},
+  {id:"a37",matricule:"34",name:"Mike Scott",grade:"Capitaine"},
+  {id:"a38",matricule:"69",name:"Scott King",grade:"Commandant"},
+  {id:"a39",matricule:"03",name:"Billy Jones",grade:"Assistant Chief of Police"},
+  {id:"a40",matricule:"02",name:"Lewis Price",grade:"Chief of Police"},
+];
+
+let agents = [];
+let units = [];
+let presence = {p1:[],p2:[],p3:[],p4:[]};
+let editingAgentId = null;
+let dragAgentId = null;
+let pendingAction = null;
+let saving = false;
+
+function setSyncStatus(status) {
+  const el = document.getElementById('syncStatus');
+  if (status === 'ok') { el.textContent = '✓ Synchronisé'; el.className = 'sync-status sync-ok'; }
+  else if (status === 'err') { el.textContent = '✗ Erreur sync'; el.className = 'sync-status sync-err'; }
+  else { el.textContent = 'Synchro...'; el.className = 'sync-status sync-pending'; }
+}
+
+async function saveToFirebase() {
+  if (saving) return;
+  saving = true;
+  setSyncStatus('pending');
+  try {
+    await setDoc(doc(db, 'rollcall', 'state'), { agents, units, presence });
+    setSyncStatus('ok');
+  } catch(e) {
+    console.error(e);
+    setSyncStatus('err');
+  }
+  saving = false;
+}
+
+// Listen for real-time updates
+onSnapshot(doc(db, 'rollcall', 'state'), (snap) => {
+  if (snap.exists()) {
+    const data = snap.data();
+    agents = data.agents || DEFAULT_AGENTS;
+    units = data.units || [];
+    presence = data.presence || {p1:[],p2:[],p3:[],p4:[]};
+  } else {
+    // First time: initialize with default agents
+    agents = DEFAULT_AGENTS;
+    units = [];
+    presence = {p1:[],p2:[],p3:[],p4:[]};
+    saveToFirebase();
+  }
+  setSyncStatus('ok');
+  render();
+});
+
+function checkLogin() {
+  const pwd = document.getElementById('loginInput').value;
+  if (pwd === 'LegacyLspd1') {
+    document.getElementById('loginOverlay').style.display = 'none';
+    sessionStorage.setItem('lspd_auth', '1');
+  } else {
+    document.getElementById('loginError').textContent = 'Mot de passe incorrect.';
+    document.getElementById('loginInput').value = '';
+  }
+}
+window.checkLogin = checkLogin;
+
+// Check if already authenticated
+if (sessionStorage.getItem('lspd_auth') === '1') {
+  document.getElementById('loginOverlay').style.display = 'none';
+}
+
+function getAllAssignedIds() {
+  const ids = new Set();
+  units.forEach(u => u.slots.forEach(s => { if (s) ids.add(s); }));
+  Object.values(presence).forEach(arr => arr.forEach(id => ids.add(id)));
+  return ids;
+}
+
+// ── AGENTS ──────────────────────────────────────────
+function renderAgents() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  const assigned = getAllAssignedIds();
+  const list = document.getElementById('agentsList');
+  list.innerHTML = '';
+  let available = 0;
+  GRADE_ORDER.forEach(grade => {
+    const gradeAgents = agents.filter(a => a.grade === grade && (!q || a.name.toLowerCase().includes(q) || a.matricule.includes(q)));
+    if (!gradeAgents.length) return;
+    const grp = document.createElement('div');
+    grp.className = 'grade-group';
+    grp.innerHTML = `<div class="grade-label">${grade}</div>`;
+    gradeAgents.forEach(a => {
+      const isAssigned = assigned.has(a.id);
+      if (!isAssigned) available++;
+      const color = GRADE_COLORS[a.grade] || '#64748b';
+      const card = document.createElement('div');
+      card.className = 'agent-card' + (isAssigned ? ' assigned' : '');
+      card.draggable = !isAssigned;
+      card.innerHTML = `<div class="agent-pip" style="background:${color}"></div><div class="agent-matricule">${a.matricule}</div><div class="agent-name">${a.name}</div>`;
+      card.addEventListener('dragstart', e => { dragAgentId = a.id; card.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+      card.addEventListener('dragend', () => card.classList.remove('dragging'));
+      grp.appendChild(card);
+    });
+    list.appendChild(grp);
+  });
+  document.getElementById('availableCount').textContent = available;
+}
+
+function saveAgent() {
+  const matricule = document.getElementById('agentMatricule').value.trim();
+  const name = document.getElementById('agentName').value.trim();
+  const grade = document.getElementById('agentGrade').value;
+  if (!matricule || !name) return;
+  if (editingAgentId) {
+    const a = agents.find(x => x.id === editingAgentId);
+    if (a) { a.matricule = matricule; a.name = name; a.grade = grade; }
+    showToast('Agent modifié');
+  } else {
+    agents.push({id:'a'+Date.now(), matricule, name, grade});
+    showToast('Agent ajouté');
+  }
+  editingAgentId = null;
+  document.getElementById('agentMatricule').value = '';
+  document.getElementById('agentName').value = '';
+  document.getElementById('agentModalTitle').textContent = 'Ajouter un agent';
+  document.getElementById('agentModalBtn').textContent = 'Ajouter';
+  closeModal('addAgentModal');
+  saveToFirebase(); render();
+}
+
+function deleteAgent(id) {
+  units.forEach(u => { u.slots = u.slots.map(s => s === id ? null : s); });
+  Object.keys(presence).forEach(k => { presence[k] = presence[k].filter(x => x !== id); });
+  agents = agents.filter(a => a.id !== id);
+  saveToFirebase(); render();
+  showToast('Agent supprimé');
+}
+
+function editAgent(id) {
+  const a = agents.find(x => x.id === id);
+  if (!a) return;
+  editingAgentId = id;
+  document.getElementById('agentMatricule').value = a.matricule;
+  document.getElementById('agentName').value = a.name;
+  document.getElementById('agentGrade').value = a.grade;
+  document.getElementById('agentModalTitle').textContent = "Modifier l'agent";
+  document.getElementById('agentModalBtn').textContent = 'Enregistrer';
+  openModal('addAgentModal');
+}
+
+function renderManageTable() {
+  const table = document.getElementById('manageTable');
+  const rows = GRADE_ORDER.flatMap(grade =>
+    agents.filter(a => a.grade === grade).map(a => {
+      const color = GRADE_COLORS[a.grade] || '#64748b';
+      return `<tr>
+        <td><span class="grade-pill" style="background:${color}">${a.grade}</span></td>
+        <td style="font-family:'Rajdhani',sans-serif;font-weight:700">${a.matricule}</td>
+        <td>${a.name}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;margin-right:4px" onclick="editAgentFromManage('${a.id}')">✏️ Modifier</button>
+          <button class="btn btn-danger" style="padding:4px 10px;font-size:11px" onclick="askDelete('${a.id}')">🗑 Supprimer</button>
+        </td></tr>`;
+    })
+  ).join('');
+  table.innerHTML = `<thead><tr><th>Grade</th><th>Mat.</th><th>Nom</th><th></th></tr></thead><tbody>${rows}</tbody>`;
+}
+
+window.editAgentFromManage = (id) => { closeModal('manageAgentsModal'); editAgent(id); };
+window.askDelete = (id) => {
+  const a = agents.find(x => x.id === id);
+  if (!a) return;
+  document.getElementById('confirmText').textContent = `Supprimer ${a.name} ?`;
+  document.getElementById('confirmSub').textContent = `Matricule ${a.matricule} — ${a.grade}`;
+  pendingAction = () => { deleteAgent(id); renderManageTable(); };
+  document.getElementById('confirmModal').classList.add('open');
+};
+
+// ── UNITS ──────────────────────────────────────────
+function computeUnitName(unit) {
+  const filled = unit.slots.filter(Boolean).map(id => agents.find(a => a.id === id)).filter(Boolean);
+  if (!filled.length) return `${unit.type}-?`;
+  let highestIdx = -1;
+  filled.forEach(a => { const idx = GRADE_ORDER.indexOf(a.grade); if (idx > highestIdx) highestIdx = idx; });
+  const top = filled.filter(a => GRADE_ORDER.indexOf(a.grade) === highestIdx);
+  const chosen = top[Math.floor(Math.random() * top.length)];
+  return `${unit.type}-${chosen.matricule}`;
+}
+
+window.onUnitTypeChange = () => {
+  const val = document.getElementById('unitType').value;
+  document.getElementById('customNameGroup').style.display = val === 'CUSTOM' ? 'block' : 'none';
+};
+
+window.addUnit = () => {
+  const typeRaw = document.getElementById('unitType').value;
+  if (typeRaw === 'CUSTOM') {
+    const customName = document.getElementById('customUnitName').value.trim();
+    if (!customName) { alert("Saisis un nom pour l'unité."); return; }
+    units.push({ type: customName, desc: 'Unité personnalisée', slots: [], name: customName, custom: true });
+    document.getElementById('customUnitName').value = '';
+    document.getElementById('customNameGroup').style.display = 'none';
+  } else {
+    const [type, slotsCount, desc] = typeRaw.split('|');
+    units.push({ type, desc, slots: Array(parseInt(slotsCount)).fill(null), name: `${type}-?`, custom: false });
+  }
+  document.getElementById('unitType').value = 'LINCOLN|1|1 agent véhiculé';
+  closeModal('addUnitModal');
+  saveToFirebase(); render();
+  showToast('Unité créée');
+};
+
+function renderUnits() {
+  const grid = document.getElementById('unitsGrid');
+  grid.innerHTML = '';
+  document.getElementById('unitsCount').textContent = `${units.length} unité(s)`;
+  if (!units.length) {
+    grid.innerHTML = '<div class="empty-units">Aucune unité créée.<br>Cliquez sur <strong>+ Unité</strong> pour commencer.</div>';
+    return;
+  }
+  units.forEach((unit, ui) => {
+    const card = document.createElement('div');
+    card.className = 'unit-card';
+    let slotsHtml = '';
+    if (unit.custom) {
+      unit.slots.forEach((agentId, si) => {
+        const agent = agentId ? agents.find(a => a.id === agentId) : null;
+        if (!agent) return;
+        const color = GRADE_COLORS[agent.grade] || '#64748b';
+        slotsHtml += `<div class="unit-slot filled" data-unit="${ui}" data-slot="${si}">
+          <div class="unit-slot-content">
+            <div class="agent-pip" style="background:${color}"></div>
+            <div class="agent-matricule" style="font-family:'Rajdhani',sans-serif;font-weight:700;color:#64748b;min-width:28px">${agent.matricule}</div>
+            <div style="font-size:13px;flex:1">${agent.name}</div>
+            <button class="slot-remove" onclick="removeFromSlot(${ui},${si})">✕</button>
+          </div></div>`;
+      });
+      slotsHtml += `<div class="unit-slot" data-unit="${ui}" data-slot="${unit.slots.length}"><span style="font-size:11px">Glisser un agent ici</span></div>`;
+    } else {
+      unit.slots.forEach((agentId, si) => {
+        const agent = agentId ? agents.find(a => a.id === agentId) : null;
+        const color = agent ? (GRADE_COLORS[agent.grade] || '#64748b') : '';
+        slotsHtml += `<div class="unit-slot ${agent?'filled':''}" data-unit="${ui}" data-slot="${si}">
+          ${agent
+            ? `<div class="unit-slot-content"><div class="agent-pip" style="background:${color}"></div><div class="agent-matricule" style="font-family:'Rajdhani',sans-serif;font-weight:700;color:#64748b;min-width:28px">${agent.matricule}</div><div style="font-size:13px;flex:1">${agent.name}</div><button class="slot-remove" onclick="removeFromSlot(${ui},${si})">✕</button></div>`
+            : `<span style="font-size:11px">Glisser un agent ici</span>`}
+        </div>`;
+      });
+    }
+    card.innerHTML = `
+      <div class="unit-header">
+        <div class="unit-name">${unit.name}</div>
+        ${unit.custom ? '' : `<div class="unit-type-badge">${unit.type}</div>`}
+      </div>
+      <div class="unit-desc">${unit.desc}</div>
+      <div class="unit-slots">${slotsHtml}</div>
+      <div class="unit-footer"><button class="del-unit-btn" onclick="deleteUnit(${ui})">Supprimer l'unité</button></div>`;
+
+    card.querySelectorAll('.unit-slot').forEach(slot => {
+      slot.addEventListener('dragover', e => { e.preventDefault(); slot.style.borderColor='var(--accent)'; slot.style.background='#111b30'; });
+      slot.addEventListener('dragleave', () => { slot.style.borderColor=''; slot.style.background=''; });
+      slot.addEventListener('drop', e => {
+        e.preventDefault(); slot.style.borderColor=''; slot.style.background='';
+        if (!dragAgentId || getAllAssignedIds().has(dragAgentId)) return;
+        const unitIdx = parseInt(slot.dataset.unit);
+        const slotIdx = parseInt(slot.dataset.slot);
+        if (!unit.custom && units[unitIdx].slots[slotIdx]) return;
+        if (unit.custom) { units[unitIdx].slots.push(dragAgentId); }
+        else { units[unitIdx].slots[slotIdx] = dragAgentId; units[unitIdx].name = computeUnitName(units[unitIdx]); }
+        dragAgentId = null;
+        saveToFirebase(); render();
+        showToast('Agent assigné');
+      });
+    });
+    grid.appendChild(card);
+  });
+}
+
+window.removeFromSlot = (ui, si) => {
+  if (units[ui].custom) { units[ui].slots.splice(si, 1); }
+  else { units[ui].slots[si] = null; units[ui].name = computeUnitName(units[ui]); }
+  saveToFirebase(); render();
+};
+
+window.deleteUnit = (ui) => { units.splice(ui, 1); saveToFirebase(); render(); showToast('Unité supprimée'); };
+
+// ── PRESENCE ──────────────────────────────────────────
+function renderPresence() {
+  const grid = document.getElementById('presenceGrid');
+  grid.innerHTML = '';
+  PRESENCE_CATEGORIES.forEach(cat => {
+    const agentsIn = (presence[cat.id] || []).map(id => agents.find(a => a.id === id)).filter(Boolean);
+    const card = document.createElement('div');
+    card.className = 'presence-card';
+    const slots = agentsIn.map((agent) => {
+      const color = GRADE_COLORS[agent.grade] || '#64748b';
+      return `<div class="presence-slot">
+        <div class="agent-pip" style="background:${color}"></div>
+        <div style="font-family:'Rajdhani',sans-serif;font-weight:700;color:#64748b;min-width:28px">${agent.matricule}</div>
+        <div style="flex:1">${agent.name}</div>
+        <button class="slot-remove" onclick="removeFromPresence('${cat.id}','${agent.id}')">✕</button>
+      </div>`;
+    }).join('');
+    card.innerHTML = `
+      <div class="presence-card-header">
+        <div class="presence-dot" style="background:${cat.color}"></div>
+        <div class="presence-card-title">${cat.label}</div>
+        <div class="presence-count">${agentsIn.length}</div>
+      </div>
+      <div class="presence-slots">${slots}<div class="presence-drop-zone">Glisser un agent ici</div></div>`;
+    card.addEventListener('dragover', e => { e.preventDefault(); card.classList.add('drag-over'); });
+    card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
+    card.addEventListener('drop', e => {
+      e.preventDefault(); card.classList.remove('drag-over');
+      if (!dragAgentId || getAllAssignedIds().has(dragAgentId)) return;
+      if (!presence[cat.id]) presence[cat.id] = [];
+      presence[cat.id].push(dragAgentId);
+      dragAgentId = null;
+      saveToFirebase(); render();
+      showToast('Agent ajouté');
+    });
+    grid.appendChild(card);
+  });
+}
+
+window.removeFromPresence = (catId, agentId) => {
+  presence[catId] = presence[catId].filter(id => id !== agentId);
+  saveToFirebase(); render();
+};
+
+// ── MISC ──────────────────────────────────────────────
+window.confirmReset = () => {
+  if (confirm('Supprimer toutes les unités et réinitialiser les présences ?')) {
+    units = []; presence = {p1:[],p2:[],p3:[],p4:[]};
+    saveToFirebase(); render();
+    showToast('Dispatch réinitialisé');
+  }
+};
+
+window.openModal = (id) => {
+  document.getElementById(id).classList.add('open');
+  if (id === 'manageAgentsModal') renderManageTable();
+};
+window.closeModal = (id) => {
+  document.getElementById(id).classList.remove('open');
+  if (id === 'addAgentModal') {
+    editingAgentId = null;
+    document.getElementById('agentModalTitle').textContent = 'Ajouter un agent';
+    document.getElementById('agentModalBtn').textContent = 'Ajouter';
+  }
+};
+window.saveAgent = saveAgent;
+
+window.confirmAction = () => { if (pendingAction) pendingAction(); pendingAction = null; closeConfirm(); };
+window.closeConfirm = () => { document.getElementById('confirmModal').classList.remove('open'); pendingAction = null; };
+
+document.querySelectorAll('.modal-overlay').forEach(m => m.addEventListener('click', e => { if (e.target === m) window.closeModal(m.id); }));
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+function render() { renderAgents(); renderUnits(); renderPresence(); }
+</script>
+</body>
+</html>
